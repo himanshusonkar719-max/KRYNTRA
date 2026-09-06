@@ -1,0 +1,18 @@
+{
+  "name": "kryntra-unified",
+  "version": "1.0.0",
+  "private": true,
+  "description": "KRYNTRA — Continuous & Autonomous Agentic Cybersecurity Assessment Platform",
+  "scripts": {
+    "dev": "concurrently -k -p \"[{name}]\" -n \"BACKEND,FRONTEND\" -c \"cyan.bold,green.bold\" \"cd backend && python -m uvicorn main:app --reload --port 8000\" \"cd frontend && npm run dev\"",
+    "dev:frontend": "npm run dev --prefix frontend",
+    "dev:backend": "cd backend && python -m uvicorn main:app --reload --port 8000",
+    "build": "npm run build --prefix frontend",
+    "start": "npm run start --prefix frontend",
+    "test:backend": "cd backend && python test_api.py",
+    "lint": "npm run lint --prefix frontend"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}
