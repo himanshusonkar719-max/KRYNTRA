@@ -12,15 +12,9 @@ export async function GET(request) {
       const decoded = JSON.parse(Buffer.from(token.replace("jwt-", ""), "base64").toString("utf-8"));
       return NextResponse.json(decoded);
     } catch {
-      // Return default
+      return NextResponse.json({ detail: "Invalid token payload" }, { status: 401 });
     }
   }
 
-  return NextResponse.json({
-    id: "usr-session",
-    name: "Security Analyst",
-    email: "analyst@kryntra.io",
-    role: "analyst",
-    created_at: new Date().toISOString(),
-  });
+  return NextResponse.json({ detail: "Session expired or invalid" }, { status: 401 });
 }

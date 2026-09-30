@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
@@ -22,14 +22,22 @@ import {
   BarChart2,
   Trophy,
   Wrench,
-  Terminal
+  Terminal,
+  Lock
 } from "lucide-react";
 
 export default function DashboardLayout({ children }) {
   const pathname = usePathname();
   const router = useRouter();
-  const { user, logout } = useAuth();
+  const { user, token, loading, logout } = useAuth();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  // ─── AUTHENTICATION ROUTE GUARD ──────────────────────────
+  useEffect(() => {
+    if (!loading && !user && !token) {
+      router.replace("/login");
+    }
+  }, [loading, user, token, router]);
 
   const navSections = [
     {
@@ -64,6 +72,28 @@ export default function DashboardLayout({ children }) {
     await logout();
     router.push("/login");
   };
+
+  // If verifying authentication state, show secure loading spinner
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-[#0a0f1d] text-white flex items-center justify-center">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center shadow-lg shadow-cyan-500/20 animate-pulse">
+            <Lock className="w-5 h-5 text-white" />
+          </div>
+          <span className="text-xs font-mono text-cyan-400">Verifying security token...</span>
+        </div>
+      </div>
+    );
+  }
+
+  // Prevent unauthenticated flashes
+  if (!user && !token) {
+    return null;
+  }
+
+  const displayName = user?.name || (user?.email ? user.email.split("@")[0] : "Authenticated User");
+  const displayEmail = user?.email || "Security Analyst";
 
   return (
     <div className="min-h-screen bg-[#0a0f1d] text-[#f8fafc] flex flex-col md:flex-row">
@@ -130,7 +160,6 @@ export default function DashboardLayout({ children }) {
           </nav>
         </div>
 
-
         {/* User & System Status Card */}
         <div className="pt-6 border-t border-[#1e293b] space-y-4">
           <div className="p-3 rounded-lg bg-[#0a0f1d] border border-[#1e293b]">
@@ -143,22 +172,22 @@ export default function DashboardLayout({ children }) {
 
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2.5 overflow-hidden">
-              <div className="w-8 h-8 rounded-full bg-cyan-950 border border-cyan-800 flex items-center justify-center text-cyan-400 shrink-0">
-                <User className="w-4 h-4" />
+              <div className="w-8 h-8 rounded-full bg-cyan-950 border border-cyan-800 flex items-center justify-center text-cyan-400 shrink-0 uppercase font-bold text-xs">
+                {displayName.charAt(0)}
               </div>
               <div className="truncate">
                 <div className="text-xs font-medium text-slate-200 truncate">
-                  {user?.name || "Security Analyst"}
+                  {displayName}
                 </div>
                 <div className="text-[11px] text-slate-500 truncate">
-                  {user?.email || "analyst@kryntra.io"}
+                  {displayEmail}
                 </div>
               </div>
             </div>
             <button
               onClick={handleSignOut}
               title="Sign Out"
-              className="p-1.5 text-slate-500 hover:text-rose-400 transition-colors"
+              className="p-1.5 text-slate-500 hover:text-rose-400 transition-colors cursor-pointer"
             >
               <LogOut className="w-4 h-4" />
             </button>
@@ -175,7 +204,6 @@ export default function DashboardLayout({ children }) {
               Autonomous Cybersecurity Workspace
             </h2>
           </div>
-
 
           <div className="flex items-center gap-3">
             <div className="hidden sm:flex items-center gap-2 px-2.5 py-1 rounded-full bg-emerald-950/40 border border-emerald-800/40 text-emerald-400 text-xs font-mono">
