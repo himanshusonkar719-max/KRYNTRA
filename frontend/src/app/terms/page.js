@@ -104,7 +104,7 @@ export default function TermsPage() {
           <section className="space-y-3">
             <h2 className="text-xl font-bold text-white tracking-tight">4. Account Security & API Credentials</h2>
             <p>
-              You are responsible for maintaining the confidentiality of your account credentials and API tokens. You must immediately notify KRYNTRA at <a href="mailto:security@kryntra.io" className="text-cyan-400 hover:underline">security@kryntra.io</a> of any unauthorized account activity or compromised access keys.
+              You are responsible for maintaining the confidentiality of your account credentials and API tokens. You must immediately notify KRYNTRA at <a href="mailto:lazzy2996@gmail.com" className="text-cyan-400 hover:underline">lazzy2996@gmail.com</a> of any unauthorized account activity or compromised access keys.
             </p>
           </section>
 

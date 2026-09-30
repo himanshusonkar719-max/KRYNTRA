@@ -152,8 +152,8 @@ export default function PrivacyPolicyPage() {
               If you have inquiries regarding this policy, need to submit an erasure request, or wish to report a security disclosure, contact our Security Team:
             </p>
             <div className="p-4 rounded-xl bg-[#0f172a] border border-[#1e293b] font-mono text-xs text-slate-300 space-y-1">
-              <div>Email: <a href="mailto:privacy@kryntra.io" className="text-cyan-400 hover:underline">privacy@kryntra.io</a></div>
-              <div>Security Team: <a href="mailto:security@kryntra.io" className="text-cyan-400 hover:underline">security@kryntra.io</a></div>
+              <div>Email: <a href="mailto:lazzy2996@gmail.com" className="text-cyan-400 hover:underline">lazzy2996@gmail.com</a></div>
+              <div>Security Team: <a href="mailto:lazzy2996@gmail.com" className="text-cyan-400 hover:underline">lazzy2996@gmail.com</a></div>
               <div>Address: KRYNTRA Security Labs, Global Operations Division</div>
             </div>
           </section>
