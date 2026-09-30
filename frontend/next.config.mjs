@@ -43,6 +43,11 @@ const securityHeaders = [
 const nextConfig = {
   reactStrictMode: true,
   poweredByHeader: false, // Prevents X-Powered-By header from revealing server tech
+  compress: true, // Enable gzip/brotli compression
+  images: {
+    formats: ["image/avif", "image/webp"],
+    minimumCacheTTL: 86400,
+  },
   async headers() {
     return [
       {
@@ -62,3 +67,4 @@ const nextConfig = {
 };
 
 export default nextConfig;
+
