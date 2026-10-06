@@ -134,7 +134,7 @@ export default function AssessmentsCatalogPage() {
         <div className="p-12 text-center rounded-2xl bg-[#0f172a] border border-[#1e293b] text-slate-400">
           <Layers className="w-8 h-8 text-cyan-400 mx-auto mb-2 opacity-60" />
           <h3 className="text-sm font-bold text-white">No assessments found for this domain</h3>
-          <p className="text-xs mt-1">Select "All Domains" to explore all cybersecurity scenarios.</p>
+          <p className="text-xs mt-1">Select &quot;All Domains&quot; to explore all cybersecurity scenarios.</p>
         </div>
       ) : (
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">

@@ -39,7 +39,6 @@ function ResultsContent() {
 
   useEffect(() => {
     if (result || !attemptId) {
-      setLoading(false);
       return;
     }
 
