@@ -38,22 +38,52 @@ export default function TriagePage() {
   };
 
   useEffect(() => {
-    fetchQueue();
+    let active = true;
+
+    const load = async () => {
+      if (!active) return;
+      setLoading(true);
+      try {
+        const data = await triageApi.getQueue();
+        if (!active) return;
+        if (Array.isArray(data)) {
+          setQueue(data);
+        }
+      } catch {
+        // Fallback
+      } finally {
+        if (active) setLoading(false);
+      }
+    };
+
+    void load();
+    return () => {
+      active = false;
+    };
   }, []);
 
   const handleToggleFalsePositive = async (vuln) => {
-    const nextState = vuln.is_false_positive ? 0 : 1;
+    if (!vuln || !vuln.id) return;
+    const isCurrentlyFP = vuln.is_false_positive === 1 || vuln.is_false_positive === true;
+    const nextState = isCurrentlyFP ? 0 : 1;
     try {
       const updated = await triageApi.overrideTriage(vuln.id, {
         is_false_positive: nextState,
       });
-      setQueue((prev) => prev.map((item) => (item.id === vuln.id ? updated : item)));
+      setQueue((prev) =>
+        prev.map((item) =>
+          item.id === vuln.id
+            ? { ...item, ...(updated || {}), is_false_positive: nextState }
+            : item
+        )
+      );
     } catch (err) {
       console.error("Failed to toggle false positive:", err);
     }
   };
 
   const handleVerifyInSandbox = async (vuln) => {
+    if (!vuln || !vuln.id) return;
     setVerifyingId(vuln.id);
     setVerificationResult(null);
 
@@ -72,11 +102,15 @@ export default function TriagePage() {
   };
 
   const filteredQueue = queue.filter((v) => {
-    if (activeTab === "critical") return v.severity === "critical" && !v.is_false_positive;
+    if (!v) return false;
+    const isFP = v.is_false_positive === 1 || v.is_false_positive === true;
+    const sev = String(v.severity || "medium").toLowerCase();
+    if (activeTab === "critical") return sev === "critical" && !isFP;
     if (activeTab === "verified") return v.sandbox_status === "passed";
-    if (activeTab === "fp") return v.is_false_positive === 1;
+    if (activeTab === "fp") return isFP;
     return true;
   });
+  const verificationLogs = Array.isArray(verificationResult?.logs) ? verificationResult.logs : [];
 
   return (
     <div className="space-y-8 animate-fade-in">
@@ -113,7 +147,7 @@ export default function TriagePage() {
             activeTab === "critical" ? "bg-rose-500 text-slate-950" : "text-slate-400 hover:text-white"
           }`}
         >
-          Critical ({queue.filter((v) => v.severity === "critical" && !v.is_false_positive).length})
+          Critical ({queue.filter((v) => v && String(v.severity || "").toLowerCase() === "critical" && !v.is_false_positive).length})
         </button>
         <button
           onClick={() => setActiveTab("verified")}
@@ -121,7 +155,7 @@ export default function TriagePage() {
             activeTab === "verified" ? "bg-emerald-500 text-slate-950" : "text-slate-400 hover:text-white"
           }`}
         >
-          Sandbox Verified ({queue.filter((v) => v.sandbox_status === "passed").length})
+          Sandbox Verified ({queue.filter((v) => v && v.sandbox_status === "passed").length})
         </button>
         <button
           onClick={() => setActiveTab("fp")}
@@ -129,7 +163,7 @@ export default function TriagePage() {
             activeTab === "fp" ? "bg-slate-700 text-slate-200" : "text-slate-400 hover:text-white"
           }`}
         >
-          False Positives ({queue.filter((v) => v.is_false_positive === 1).length})
+          False Positives ({queue.filter((v) => v && (v.is_false_positive === 1 || v.is_false_positive === true)).length})
         </button>
       </div>
 
@@ -149,10 +183,10 @@ export default function TriagePage() {
             </button>
           </div>
           <div className="space-y-1.5 text-slate-300">
-            {verificationResult.logs.map((log, i) => (
+            {verificationLogs.map((log, i) => (
               <div key={i} className="flex items-start gap-2">
                 <span className="text-cyan-500/70 select-none">&gt;</span>
-                <span className={i === verificationResult.logs.length - 1 ? "text-emerald-400 font-bold" : ""}>
+                <span className={i === verificationLogs.length - 1 ? "text-emerald-400 font-bold" : ""}>
                   {log}
                 </span>
               </div>
@@ -172,90 +206,93 @@ export default function TriagePage() {
         </div>
       ) : (
         <div className="space-y-4">
-          {filteredQueue.map((vuln) => (
-            <div
-              key={vuln.id}
-              className={`p-6 rounded-2xl bg-[#0f172a] border transition-colors ${
-                vuln.is_false_positive
-                  ? "border-slate-800 opacity-60"
-                  : vuln.severity === "critical"
-                  ? "border-rose-900/50 hover:border-rose-700/60"
-                  : "border-[#1e293b] hover:border-slate-700"
-              }`}
-            >
-              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-                <div className="space-y-2">
-                  <div className="flex flex-wrap items-center gap-2">
-                    {vuln.ai_priority && (
-                      <span className="px-2 py-0.5 rounded bg-cyan-950 text-cyan-400 border border-cyan-800/60 text-[10px] font-mono font-bold">
-                        AI PRIORITY #{vuln.ai_priority}
+          {filteredQueue.map((vuln) => {
+            const isFP = vuln.is_false_positive === 1 || vuln.is_false_positive === true;
+            const sev = String(vuln.severity || "info").toLowerCase();
+            return (
+              <div
+                key={vuln.id}
+                className={`p-6 rounded-2xl bg-[#0f172a] border transition-colors ${
+                  isFP
+                    ? "border-slate-800 opacity-60"
+                    : sev === "critical"
+                    ? "border-rose-900/50 hover:border-rose-700/60"
+                    : "border-[#1e293b] hover:border-slate-700"
+                }`}
+              >
+                <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                  <div className="space-y-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                      {vuln.ai_priority != null && (
+                        <span className="px-2 py-0.5 rounded bg-cyan-950 text-cyan-400 border border-cyan-800/60 text-[10px] font-mono font-bold">
+                          AI PRIORITY #{vuln.ai_priority}
+                        </span>
+                      )}
+                      <span
+                        className={`px-2 py-0.5 rounded text-[10px] font-mono uppercase font-bold ${
+                          sev === "critical"
+                            ? "bg-rose-950/60 text-rose-400 border border-rose-800/50"
+                            : sev === "high"
+                            ? "bg-orange-950/60 text-orange-400 border border-orange-800/50"
+                            : sev === "medium"
+                            ? "bg-amber-950/60 text-amber-400 border border-amber-800/50"
+                            : "bg-blue-950/60 text-blue-400 border border-blue-800/50"
+                        }`}
+                      >
+                        {sev}
                       </span>
-                    )}
-                    <span
-                      className={`px-2 py-0.5 rounded text-[10px] font-mono uppercase font-bold ${
-                        vuln.severity === "critical"
-                          ? "bg-rose-950/60 text-rose-400 border border-rose-800/50"
-                          : vuln.severity === "high"
-                          ? "bg-orange-950/60 text-orange-400 border border-orange-800/50"
-                          : vuln.severity === "medium"
-                          ? "bg-amber-950/60 text-amber-400 border border-amber-800/50"
-                          : "bg-blue-950/60 text-blue-400 border border-blue-800/50"
-                      }`}
-                    >
-                      {vuln.severity}
-                    </span>
 
-                    {vuln.ai_confidence && (
-                      <span className="text-[11px] font-mono text-emerald-400">
-                        Confidence: {(vuln.ai_confidence * 100).toFixed(0)}%
-                      </span>
-                    )}
+                      {vuln.ai_confidence != null && !isNaN(vuln.ai_confidence) && (
+                        <span className="text-[11px] font-mono text-emerald-400">
+                          Confidence: {(Number(vuln.ai_confidence) * 100).toFixed(0)}%
+                        </span>
+                      )}
 
-                    {vuln.sandbox_status === "passed" && (
-                      <span className="px-2 py-0.5 rounded bg-emerald-950/60 text-emerald-400 border border-emerald-800/50 text-[10px] font-mono flex items-center gap-1">
-                        <CheckCircle2 className="w-3 h-3" /> Sandbox Verified
-                      </span>
-                    )}
+                      {vuln.sandbox_status === "passed" && (
+                        <span className="px-2 py-0.5 rounded bg-emerald-950/60 text-emerald-400 border border-emerald-800/50 text-[10px] font-mono flex items-center gap-1">
+                          <CheckCircle2 className="w-3 h-3" /> Sandbox Verified
+                        </span>
+                      )}
 
-                    {vuln.is_false_positive === 1 && (
-                      <span className="px-2 py-0.5 rounded bg-slate-800 text-slate-400 text-[10px] font-mono">
-                        Flagged as False Positive
-                      </span>
-                    )}
+                      {isFP && (
+                        <span className="px-2 py-0.5 rounded bg-slate-800 text-slate-400 text-[10px] font-mono">
+                          Flagged as False Positive
+                        </span>
+                      )}
+                    </div>
+
+                    <h3 className="text-base font-bold text-white">{vuln.title || "Security Finding"}</h3>
+                    <p className="text-xs text-slate-400 max-w-3xl leading-relaxed">{vuln.description || "No description provided."}</p>
                   </div>
 
-                  <h3 className="text-base font-bold text-white">{vuln.title}</h3>
-                  <p className="text-xs text-slate-400 max-w-3xl leading-relaxed">{vuln.description}</p>
-                </div>
+                  {/* Actions */}
+                  <div className="flex items-center gap-2.5 shrink-0">
+                    <button
+                      onClick={() => handleToggleFalsePositive(vuln)}
+                      className="px-3 py-1.5 rounded-lg bg-[#0a0f1d] border border-[#1e293b] text-slate-400 hover:text-white text-xs font-mono transition-colors"
+                    >
+                      {isFP ? "Restore" : "Mark FP"}
+                    </button>
 
-                {/* Actions */}
-                <div className="flex items-center gap-2.5 shrink-0">
-                  <button
-                    onClick={() => handleToggleFalsePositive(vuln)}
-                    className="px-3 py-1.5 rounded-lg bg-[#0a0f1d] border border-[#1e293b] text-slate-400 hover:text-white text-xs font-mono transition-colors"
-                  >
-                    {vuln.is_false_positive ? "Restore" : "Mark FP"}
-                  </button>
-
-                  <button
-                    onClick={() => handleVerifyInSandbox(vuln)}
-                    disabled={verifyingId === vuln.id}
-                    className="px-4 py-2 bg-cyan-500 hover:bg-cyan-400 active:bg-cyan-600 disabled:opacity-50 text-slate-950 text-xs font-bold rounded-lg transition-colors flex items-center gap-1.5 shadow-sm shadow-cyan-500/20"
-                  >
-                    {verifyingId === vuln.id ? (
-                      <>
-                        <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                        <span>Verifying in Docker...</span>
-                      </>
-                    ) : (
-                      <>
-                        <Play className="w-3.5 h-3.5 fill-current" />
-                        <span>Verify in Sandbox</span>
-                      </>
-                    )}
-                  </button>
+                    <button
+                      onClick={() => handleVerifyInSandbox(vuln)}
+                      disabled={verifyingId === vuln.id}
+                      className="px-4 py-2 bg-cyan-500 hover:bg-cyan-400 active:bg-cyan-600 disabled:opacity-50 text-slate-950 text-xs font-bold rounded-lg transition-colors flex items-center gap-1.5 shadow-sm shadow-cyan-500/20"
+                    >
+                      {verifyingId === vuln.id ? (
+                        <>
+                          <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                          <span>Verifying in Docker...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Play className="w-3.5 h-3.5 fill-current" />
+                          <span>Verify in Sandbox</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
                 </div>
-              </div>
 
               {/* Remediation Snippet */}
               {vuln.remediation && (
@@ -272,8 +309,9 @@ export default function TriagePage() {
                 </div>
               )}
             </div>
-          ))}
-        </div>
+          );
+        })}
+      </div>
       )}
     </div>
   );

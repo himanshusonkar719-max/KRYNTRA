@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
@@ -17,8 +17,12 @@ export default function LoginPage() {
   const [honeypot, setHoneypot] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const mountTimeRef = useRef(Date.now());
+  const mountTimeRef = useRef(0);
   const lastSubmitRef = useRef(0);
+
+  useEffect(() => {
+    mountTimeRef.current = Date.now();
+  }, []);
 
   const handleSubmit = async (e) => {
     e.preventDefault();

@@ -120,3 +120,51 @@ class ComplianceReportResponse(BaseModel):
 
     model_config = {"from_attributes": True}
 
+
+# ─── Scheduler (Phase 2: AWIS Autonomous Loop) ──────────
+class ScheduleCreateRequest(BaseModel):
+    target: str
+    scan_type: str = "network"
+    interval_minutes: int = 1440  # daily by default
+
+
+class ScheduleUpdateRequest(BaseModel):
+    interval_minutes: Optional[int] = None
+    is_active: Optional[int] = None
+
+
+class ScheduleResponse(BaseModel):
+    id: str
+    user_id: str
+    target: str
+    scan_type: str
+    interval_minutes: int
+    is_active: int
+    last_scan_id: Optional[str] = None
+    last_run_at: Optional[datetime] = None
+    next_run_at: Optional[datetime] = None
+    run_count: int
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+# ─── Remediations (Phase 3: Agentic Auto-Fixer) ─────────
+class RemediationResponse(BaseModel):
+    id: str
+    vulnerability_id: str
+    scan_id: str
+    fix_type: str
+    patch_content: str
+    target_file: Optional[str] = None
+    status: str
+    verification_result: Optional[str] = None
+    applied_at: Optional[datetime] = None
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class RemediationActionRequest(BaseModel):
+    action: str  # approve | reject | apply | verify
+

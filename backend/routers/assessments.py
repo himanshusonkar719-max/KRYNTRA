@@ -64,6 +64,36 @@ def get_attempt_history(
     ]
 
 
+@router.get("/attempts/{attempt_id}")
+def get_attempt_detail(
+    attempt_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    att = (
+        db.query(Attempt)
+        .filter(Attempt.id == attempt_id, Attempt.user_id == current_user.id)
+        .first()
+    )
+    if not att:
+        raise HTTPException(status_code=404, detail="Attempt not found.")
+
+    return {
+        "attempt_id": att.id,
+        "assessment_id": att.assessment_id,
+        "assessment_title": att.assessment.title if att.assessment else "Assessment",
+        "domain": att.assessment.domain if att.assessment else "Cybersecurity",
+        "score": att.score,
+        "total_points": att.total_points,
+        "percentage": att.percentage,
+        "passed": bool(att.passed),
+        "time_taken_secs": att.time_taken_secs,
+        "answers": att.answers or {},
+        "feedback": att.feedback or [],
+        "completed_at": att.completed_at
+    }
+
+
 @router.get("/{assessment_id}")
 def get_assessment(assessment_id: str, db: Session = Depends(get_db)):
     assessment = db.query(Assessment).filter(Assessment.id == assessment_id).first()

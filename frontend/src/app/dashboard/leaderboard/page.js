@@ -33,7 +33,28 @@ export default function LeaderboardPage() {
   };
 
   useEffect(() => {
-    fetchBoard();
+    let active = true;
+
+    const load = async () => {
+      if (!active) return;
+      setLoading(true);
+      try {
+        const data = await analyticsApi.getLeaderboard();
+        if (!active) return;
+        if (Array.isArray(data)) {
+          setBoard(data);
+        }
+      } catch (err) {
+        console.error(err);
+      } finally {
+        if (active) setLoading(false);
+      }
+    };
+
+    void load();
+    return () => {
+      active = false;
+    };
   }, []);
 
   return (

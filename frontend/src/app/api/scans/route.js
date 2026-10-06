@@ -561,6 +561,23 @@ export async function POST(request) {
 
     const honeypotSummary = isHoneypot ? " [HONEYPOT/DECOY SIGNATURE IDENTIFIED]" : "";
 
+    // ─── AWIS Phase 3: Auto-generate remediation patches ─────
+    const remediations = [];
+    for (const vuln of vulnerabilities) {
+      const patch = generateRemediationPatch(vuln);
+      if (patch) {
+        remediations.push({
+          id: "fix-" + Math.random().toString(36).substring(2, 9),
+          vulnerability_id: vuln.id,
+          fix_type: patch.fix_type,
+          patch_content: patch.patch_content,
+          target_file: patch.target_file,
+          status: "proposed",
+          created_at: new Date().toISOString(),
+        });
+      }
+    }
+
     const scanResult = {
       id: "scan-" + Math.random().toString(36).substring(2, 9),
       target: cleanHost,
@@ -568,9 +585,10 @@ export async function POST(request) {
       status: "completed",
       progress: 100,
       score: finalScore,
-      summary: `Deep live assessment complete for ${cleanHost} (${resolvedIp}). ${openPortsSummary}${honeypotSummary} ${vulnerabilities.length} genuine findings verified.`,
+      summary: `Deep live assessment complete for ${cleanHost} (${resolvedIp}). ${openPortsSummary}${honeypotSummary} ${vulnerabilities.length} genuine findings verified.${remediations.length > 0 ? ` Auto-generated ${remediations.length} remediation patches.` : ""}`,
       created_at: new Date().toISOString(),
       vulnerabilities,
+      remediations,
     };
 
     return NextResponse.json(scanResult);
@@ -580,6 +598,159 @@ export async function POST(request) {
       { status: 500 }
     );
   }
+}
+
+// ─── Remediation Patch Generator ──────────────────────────────
+function generateRemediationPatch(vuln) {
+  const title = (vuln.title || "").toLowerCase();
+  const comp = (vuln.affected_component || "").toLowerCase();
+
+  if (title.includes("content-security-policy") || title.includes("csp")) {
+    return {
+      fix_type: "header_patch",
+      patch_content: `# Add CSP header to your web server or next.config.js:
+# Nginx:
+add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self' https:; frame-ancestors 'none';" always;
+
+# Next.js (next.config.js headers):
+{ key: "Content-Security-Policy", value: "default-src 'self'; script-src 'self'; object-src 'none'; frame-ancestors 'none';" }`,
+      target_file: "nginx.conf / next.config.js",
+    };
+  }
+
+  if (title.includes("strict-transport-security") || title.includes("hsts")) {
+    return {
+      fix_type: "header_patch",
+      patch_content: `# Add HSTS header:
+# Nginx:
+add_header Strict-Transport-Security "max-age=31536000; includeSubDomains; preload" always;
+
+# Next.js:
+{ key: "Strict-Transport-Security", value: "max-age=31536000; includeSubDomains; preload" }`,
+      target_file: "nginx.conf / next.config.js",
+    };
+  }
+
+  if (title.includes("x-frame-options") || title.includes("clickjacking")) {
+    return {
+      fix_type: "header_patch",
+      patch_content: `# Add X-Frame-Options:
+# Nginx: add_header X-Frame-Options "SAMEORIGIN" always;
+# Apache: Header always set X-Frame-Options "SAMEORIGIN"
+# Next.js: { key: "X-Frame-Options", value: "SAMEORIGIN" }`,
+      target_file: "server-config",
+    };
+  }
+
+  if (title.includes("x-content-type-options") || title.includes("mime-sniffing")) {
+    return {
+      fix_type: "header_patch",
+      patch_content: `# Add X-Content-Type-Options:
+# Nginx: add_header X-Content-Type-Options "nosniff" always;
+# Apache: Header always set X-Content-Type-Options "nosniff"
+# Next.js: { key: "X-Content-Type-Options", value: "nosniff" }`,
+      target_file: "server-config",
+    };
+  }
+
+  if (title.includes("dmarc")) {
+    const domain = comp.includes("_dmarc.") ? comp.split("_dmarc.").pop().trim() : "yourdomain.com";
+    return {
+      fix_type: "dns_fix",
+      patch_content: `# Add DNS TXT record:
+# Host: _dmarc.${domain}
+# Type: TXT
+# Value: v=DMARC1; p=reject; rua=mailto:dmarc@${domain}; fo=1; pct=100;`,
+      target_file: `DNS _dmarc.${domain}`,
+    };
+  }
+
+  if (title.includes("spf")) {
+    return {
+      fix_type: "dns_fix",
+      patch_content: `# Add DNS TXT record:
+# Host: @ (root domain)
+# Type: TXT
+# Value: v=spf1 mx a include:_spf.google.com ~all`,
+      target_file: "DNS TXT root",
+    };
+  }
+
+  if (title.includes("cors")) {
+    return {
+      fix_type: "config_change",
+      patch_content: `# Restrict CORS to trusted origins only:
+const ALLOWED_ORIGINS = ["https://yourdomain.com"];
+// Never use Access-Control-Allow-Origin: * with credentials`,
+      target_file: "api-config",
+    };
+  }
+
+  if (title.includes("redis")) {
+    return {
+      fix_type: "firewall_rule",
+      patch_content: `# Secure Redis:
+# redis.conf: bind 127.0.0.1, requirepass STRONG_PASSWORD
+# iptables: iptables -A INPUT -p tcp --dport 6379 -s 127.0.0.1 -j ACCEPT && iptables -A INPUT -p tcp --dport 6379 -j DROP`,
+      target_file: "redis.conf / iptables",
+    };
+  }
+
+  if (title.includes("database") || title.includes("mysql") || title.includes("postgresql") || title.includes("mongodb")) {
+    const port = comp.match(/:(\d+)/)?.[1] || "3306";
+    return {
+      fix_type: "firewall_rule",
+      patch_content: `# Block public access to database port ${port}:
+iptables -A INPUT -p tcp --dport ${port} -s 127.0.0.1 -j ACCEPT
+iptables -A INPUT -p tcp --dport ${port} -j DROP
+# Or use ufw: ufw deny ${port}/tcp`,
+      target_file: "iptables / security-group",
+    };
+  }
+
+  if (title.includes("telnet")) {
+    return {
+      fix_type: "config_change",
+      patch_content: `# Disable Telnet:
+systemctl stop telnet.socket && systemctl disable telnet.socket
+# Verify SSH: systemctl enable sshd && systemctl start sshd
+# Firewall: iptables -A INPUT -p tcp --dport 23 -j DROP`,
+      target_file: "system-config",
+    };
+  }
+
+  if (title.includes("certificate expired") || title.includes("ssl") && title.includes("expired")) {
+    return {
+      fix_type: "config_change",
+      patch_content: `# Renew TLS certificate:
+certbot renew --force-renewal
+# Or: certbot certonly --nginx -d yourdomain.com`,
+      target_file: "certbot config",
+    };
+  }
+
+  if (title.includes("deprecated") && title.includes("tls")) {
+    return {
+      fix_type: "config_change",
+      patch_content: `# Enforce TLS 1.2+ only:
+# Nginx: ssl_protocols TLSv1.2 TLSv1.3;
+# Apache: SSLProtocol all -SSLv2 -SSLv3 -TLSv1 -TLSv1.1`,
+      target_file: "ssl config",
+    };
+  }
+
+  if (title.includes(".env") || title.includes(".git") || title.includes("actuator") || title.includes("phpinfo")) {
+    return {
+      fix_type: "config_change",
+      patch_content: `# Block access to sensitive paths:
+# Nginx: location ~ /\\.(env|git) { deny all; return 404; }
+# Apache: <FilesMatch "^\\.(env|git)"> Require all denied </FilesMatch>
+# Remove the file from your webroot.`,
+      target_file: "server-config",
+    };
+  }
+
+  return null;
 }
 
 export async function GET() {

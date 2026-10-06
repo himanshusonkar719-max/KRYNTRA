@@ -39,7 +39,31 @@ export default function AnalyticsPage() {
   };
 
   useEffect(() => {
-    fetchData();
+    let active = true;
+
+    const load = async () => {
+      if (!active) return;
+      setLoading(true);
+      try {
+        const [ovRes, radRes] = await Promise.allSettled([
+          analyticsApi.getOverview(),
+          analyticsApi.getRadar()
+        ]);
+
+        if (!active) return;
+        if (ovRes.status === "fulfilled") setOverview(ovRes.value);
+        if (radRes.status === "fulfilled" && Array.isArray(radRes.value)) setRadar(radRes.value);
+      } catch (err) {
+        console.error(err);
+      } finally {
+        if (active) setLoading(false);
+      }
+    };
+
+    void load();
+    return () => {
+      active = false;
+    };
   }, []);
 
   return (

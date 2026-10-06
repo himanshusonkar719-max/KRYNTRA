@@ -86,7 +86,7 @@ def verify_sandbox(
         sandbox_status="passed",
         logs=[
             "[Sandbox] Initializing isolated Docker test harness (alpine-ephemeral)...",
-            f"[Sandbox] Applying synthetic test payload targeting {vuln.affected_component}...",
+            f"[Sandbox] Applying synthetic test payload targeting {vuln.affected_component or 'network service endpoint'}...",
             f"[Sandbox] Validating remediation patch for {vuln.title}...",
             "[Sandbox] Exploit attempt rejected with HTTP 403 / Connection Closed.",
             "[Sandbox] Remediation verification PASSED with zero regressions."

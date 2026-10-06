@@ -134,3 +134,38 @@ class Attempt(Base):
     user = relationship("User", back_populates="attempts")
     assessment = relationship("Assessment", back_populates="attempts")
 
+
+class ScanSchedule(Base):
+    """Autonomous recurring scan configuration for the AWIS loop."""
+    __tablename__ = "scan_schedules"
+
+    id = Column(String, primary_key=True, default=_uuid)
+    user_id = Column(String, ForeignKey("users.id"), nullable=False)
+    target = Column(String(500), nullable=False)
+    scan_type = Column(String(50), default="network")
+    interval_minutes = Column(Integer, default=1440)  # default daily
+    is_active = Column(Integer, default=1)
+    last_scan_id = Column(String, nullable=True)
+    last_run_at = Column(DateTime, nullable=True)
+    next_run_at = Column(DateTime, nullable=True)
+    run_count = Column(Integer, default=0)
+    created_at = Column(DateTime, default=_now)
+
+
+class Remediation(Base):
+    """Tracks auto-generated fix attempts for discovered vulnerabilities."""
+    __tablename__ = "remediations"
+
+    id = Column(String, primary_key=True, default=_uuid)
+    vulnerability_id = Column(String, ForeignKey("vulnerabilities.id"), nullable=False)
+    scan_id = Column(String, ForeignKey("scans.id"), nullable=False)
+    fix_type = Column(String(100), nullable=False)  # header_patch | dns_fix | firewall_rule | config_change | dependency_upgrade
+    patch_content = Column(Text, nullable=False)     # The actual patch/config to apply
+    target_file = Column(String(500), nullable=True)  # File path or config location
+    status = Column(String(30), default="proposed")   # proposed | approved | applied | verified | failed | rejected
+    verification_result = Column(Text, nullable=True)
+    applied_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=_now)
+
+    vulnerability = relationship("Vulnerability")
+

@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect, use } from "react";
-import { useRouter } from "next/navigation";
+import { useState, useEffect, useCallback } from "react";
+import { useRouter, useParams } from "next/navigation";
 import Link from "next/link";
 import { assessmentsApi } from "@/lib/api";
 import {
@@ -17,9 +17,9 @@ import {
   Code
 } from "lucide-react";
 
-export default function AssessmentRunnerPage({ params }) {
-  const unwrappedParams = use(params);
-  const assessmentId = unwrappedParams.id;
+export default function AssessmentRunnerPage() {
+  const params = useParams();
+  const assessmentId = params?.id;
   const router = useRouter();
 
   const [assessment, setAssessment] = useState(null);
@@ -31,19 +31,63 @@ export default function AssessmentRunnerPage({ params }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    if (!assessmentId) return;
+    let active = true;
+
     async function loadData() {
       try {
         const data = await assessmentsApi.get(assessmentId);
+        if (!active) return;
         setAssessment(data);
-        setTimeLeft((data.duration_mins || 30) * 60);
+        setTimeLeft((data?.duration_mins || 30) * 60);
       } catch (err) {
-        console.error(err);
+        console.error("Failed to load assessment:", err);
       } finally {
-        setLoading(false);
+        if (active) setLoading(false);
       }
     }
     loadData();
+
+    return () => {
+      active = false;
+    };
   }, [assessmentId]);
+
+  const handleSubmit = useCallback(async () => {
+    if (submitting || !assessmentId) return;
+    setSubmitting(true);
+    try {
+      const totalSecs = (assessment?.duration_mins || 30) * 60;
+      const takenSecs = Math.max(0, totalSecs - (timeLeft || 0));
+      const res = await assessmentsApi.submit(assessmentId, answers, takenSecs);
+
+      const attemptId = res?.attempt_id || `att-${Date.now()}`;
+      const fullResult = {
+        ...res,
+        attempt_id: attemptId,
+        assessment_id: assessmentId,
+        assessment_title: res?.assessment_title || assessment?.title || "Security Assessment",
+        domain: res?.domain || assessment?.domain || "Cybersecurity",
+        score: res?.score ?? 0,
+        total_points: res?.total_points || assessment?.total_points || 30,
+        percentage: res?.percentage ?? Math.round(((res?.score || 0) / (res?.total_points || assessment?.total_points || 30)) * 100),
+        passed: res?.passed ?? false,
+        time_taken_secs: takenSecs,
+        feedback: Array.isArray(res?.feedback) ? res.feedback : [],
+      };
+
+      if (typeof window !== "undefined") {
+        try {
+          localStorage.setItem(`kryntra_result_${attemptId}`, JSON.stringify(fullResult));
+        } catch {}
+      }
+
+      router.push(`/dashboard/assessments/${assessmentId}/results?attempt_id=${attemptId}`);
+    } catch (err) {
+      console.error("Submission failed:", err);
+      setSubmitting(false);
+    }
+  }, [answers, assessment, assessmentId, router, submitting, timeLeft]);
 
   // Countdown timer
   useEffect(() => {
@@ -52,14 +96,14 @@ export default function AssessmentRunnerPage({ params }) {
       setTimeLeft((prev) => {
         if (prev <= 1) {
           clearInterval(timer);
-          handleSubmit();
+          void handleSubmit();
           return 0;
         }
         return prev - 1;
       });
     }, 1000);
     return () => clearInterval(timer);
-  }, [timeLeft]);
+  }, [handleSubmit, timeLeft]);
 
   const formatTime = (secs) => {
     if (secs === null) return "--:--";
@@ -74,26 +118,6 @@ export default function AssessmentRunnerPage({ params }) {
 
   const toggleFlag = (questionId) => {
     setFlagged((prev) => ({ ...prev, [questionId]: !prev[questionId] }));
-  };
-
-  const handleSubmit = async () => {
-    if (submitting) return;
-    setSubmitting(true);
-    try {
-      const totalSecs = (assessment?.duration_mins || 30) * 60;
-      const takenSecs = totalSecs - (timeLeft || 0);
-      const res = await assessmentsApi.submit(assessmentId, answers, takenSecs);
-
-      // Store in localStorage for results page
-      if (typeof window !== "undefined") {
-        localStorage.setItem(`kryntra_result_${res.attempt_id}`, JSON.stringify(res));
-      }
-
-      router.push(`/dashboard/assessments/${assessmentId}/results?attempt_id=${res.attempt_id}`);
-    } catch (err) {
-      console.error("Submission failed:", err);
-      setSubmitting(false);
-    }
   };
 
   if (loading) {
@@ -115,9 +139,38 @@ export default function AssessmentRunnerPage({ params }) {
     );
   }
 
-  const currentQ = assessment.questions[currentIdx];
+  const currentQ = assessment.questions[currentIdx] || assessment.questions[0];
+  if (!currentQ) {
+    return (
+      <div className="p-8 text-center text-slate-400">
+        Assessment question unavailable.
+      </div>
+    );
+  }
+
   const totalQ = assessment.questions.length;
   const answeredCount = Object.keys(answers).length;
+
+  let rawOptions = currentQ.options;
+  if (typeof rawOptions === "string") {
+    try {
+      rawOptions = JSON.parse(rawOptions);
+    } catch {}
+  }
+
+  const currentOptions = Array.isArray(rawOptions)
+    ? rawOptions.map((option, index) => {
+        const fallbackId = String.fromCharCode(97 + index);
+        if (typeof option === "string") {
+          return { id: fallbackId, text: option };
+        }
+        return {
+          ...option,
+          id: typeof option?.id === "string" ? option.id : fallbackId,
+          text: option?.text || "",
+        };
+      })
+    : [];
 
   return (
     <div className="max-w-4xl mx-auto space-y-6 animate-fade-in">
@@ -237,7 +290,7 @@ export default function AssessmentRunnerPage({ params }) {
 
         {/* Options List */}
         <div className="space-y-3 pt-2">
-          {currentQ.options.map((opt) => {
+          {currentOptions.map((opt) => {
             const isSelected = answers[currentQ.id] === opt.id;
             return (
               <button

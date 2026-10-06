@@ -13,49 +13,56 @@ const AuthContext = createContext({
 });
 
 export function AuthProvider({ children }) {
-  const [user, setUser] = useState(null);
-  const [token, setToken] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [user, setUserState] = useState(() => getUser());
+  const [token, setTokenState] = useState(() => getToken());
+  const [loading, setLoading] = useState(() => !getToken());
 
   useEffect(() => {
     const savedToken = getToken();
     const savedUser = getUser();
 
-    if (savedToken) {
-      setToken(savedToken);
-      if (savedUser) {
-        setUser(savedUser);
-      }
-      // Optionally verify with backend
-      authApi.getSession().then((verifiedUser) => {
-        if (verifiedUser) setUser(verifiedUser);
-        setLoading(false);
-      }).catch(() => {
-        setLoading(false);
-      });
-    } else {
-      setLoading(false);
+    if (!savedToken) {
+      return;
     }
+
+    const restoreSession = async () => {
+      try {
+        const verifiedUser = await authApi.getSession();
+        if (verifiedUser) {
+          setUserState(verifiedUser);
+        } else if (savedUser) {
+          setUserState(savedUser);
+        }
+      } catch {
+        if (savedUser) {
+          setUserState(savedUser);
+        }
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    void restoreSession();
   }, []);
 
   const login = async (email, password) => {
     const res = await authApi.login(email, password);
-    setUser(res.user);
-    setToken(res.access_token);
+    setUserState(res.user);
+    setTokenState(res.access_token);
     return res;
   };
 
   const register = async (name, email, password) => {
     const res = await authApi.register(name, email, password);
-    setUser(res.user);
-    setToken(res.access_token);
+    setUserState(res.user);
+    setTokenState(res.access_token);
     return res;
   };
 
   const logout = async () => {
     await authApi.logout();
-    setUser(null);
-    setToken(null);
+    setUserState(null);
+    setTokenState(null);
   };
 
   return (

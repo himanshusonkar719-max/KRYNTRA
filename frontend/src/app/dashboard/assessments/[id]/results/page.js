@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useEffect, Suspense, use } from "react";
-import { useSearchParams, useRouter } from "next/navigation";
+import { useState, useEffect, Suspense } from "react";
+import { useSearchParams, useRouter, useParams } from "next/navigation";
 import Link from "next/link";
+import { assessmentsApi } from "@/lib/api";
 import {
   Award,
   CheckCircle2,
@@ -15,23 +16,62 @@ import {
   FileText
 } from "lucide-react";
 
-function ResultsContent({ params }) {
-  const unwrappedParams = use(params);
-  const assessmentId = unwrappedParams.id;
+function ResultsContent() {
+  const params = useParams();
+  const assessmentId = params?.id;
   const searchParams = useSearchParams();
   const attemptId = searchParams?.get("attempt_id");
   const router = useRouter();
 
-  const [result, setResult] = useState(null);
+  const [result, setResult] = useState(() => {
+    if (!attemptId || typeof window === "undefined") {
+      return null;
+    }
+    const stored = localStorage.getItem(`kryntra_result_${attemptId}`);
+    if (!stored) return null;
+    try {
+      return JSON.parse(stored);
+    } catch {
+      return null;
+    }
+  });
+  const [loading, setLoading] = useState(!result && !!attemptId);
 
   useEffect(() => {
-    if (attemptId && typeof window !== "undefined") {
-      const stored = localStorage.getItem(`kryntra_result_${attemptId}`);
-      if (stored) {
-        setResult(JSON.parse(stored));
+    if (result || !attemptId) {
+      setLoading(false);
+      return;
+    }
+
+    let active = true;
+    async function loadAttempt() {
+      try {
+        const data = await assessmentsApi.getAttempt(attemptId);
+        if (!active) return;
+        if (data) {
+          setResult(data);
+        }
+      } catch (err) {
+        console.error("Failed to fetch attempt from backend:", err);
+      } finally {
+        if (active) setLoading(false);
       }
     }
-  }, [attemptId]);
+    void loadAttempt();
+
+    return () => {
+      active = false;
+    };
+  }, [attemptId, result]);
+
+  if (loading) {
+    return (
+      <div className="max-w-2xl mx-auto p-12 text-center rounded-2xl bg-[#0f172a] border border-[#1e293b] space-y-4">
+        <div className="w-8 h-8 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin mx-auto" />
+        <h2 className="text-sm font-mono text-cyan-400">Loading Evaluation Results...</h2>
+      </div>
+    );
+  }
 
   if (!result) {
     return (
@@ -43,7 +83,7 @@ function ResultsContent({ params }) {
         </p>
         <div className="flex items-center justify-center gap-3 pt-2">
           <Link
-            href={`/dashboard/assessments/${assessmentId}`}
+            href={`/dashboard/assessments/${assessmentId || "assess-web-001"}`}
             className="px-4 py-2 rounded-lg bg-[#0a0f1d] border border-[#1e293b] text-xs font-mono text-cyan-400 hover:text-white"
           >
             Retake Test
@@ -59,9 +99,10 @@ function ResultsContent({ params }) {
     );
   }
 
-  const passed = result.passed;
+  const passed = !!result.passed;
   const mins = Math.floor((result.time_taken_secs || 0) / 60);
   const secs = (result.time_taken_secs || 0) % 60;
+  const feedbackList = Array.isArray(result.feedback) ? result.feedback : [];
 
   return (
     <div className="max-w-4xl mx-auto space-y-8 animate-fade-in">
@@ -83,7 +124,7 @@ function ResultsContent({ params }) {
             </span>
           </div>
 
-          <h1 className="text-2xl font-bold text-white">{result.assessment_title}</h1>
+          <h1 className="text-2xl font-bold text-white">{result.assessment_title || "Security Assessment"}</h1>
           <p className="text-xs text-slate-400">
             Performance breakdown and technical explanation of results.
           </p>
@@ -92,10 +133,10 @@ function ResultsContent({ params }) {
         {/* Big Score Gauge */}
         <div className="flex flex-col items-center">
           <div className="text-4xl font-extrabold font-mono text-cyan-400">
-            {result.score} / {result.total_points}
+            {result.score ?? 0} / {result.total_points ?? 30}
           </div>
           <div className="text-xs font-mono text-slate-400 mt-0.5">
-            {result.percentage}% Final Grade
+            {result.percentage ?? 0}% Final Grade
           </div>
         </div>
       </div>
@@ -111,7 +152,7 @@ function ResultsContent({ params }) {
 
         <div className="flex items-center gap-3">
           <Link
-            href={`/dashboard/assessments/${assessmentId}`}
+            href={`/dashboard/assessments/${assessmentId || result.assessment_id || "assess-web-001"}`}
             className="px-4 py-2 rounded-lg bg-[#0f172a] border border-[#1e293b] text-xs font-mono text-slate-200 hover:text-white flex items-center gap-1.5 transition-colors"
           >
             <RotateCcw className="w-3.5 h-3.5" />
@@ -127,60 +168,70 @@ function ResultsContent({ params }) {
         </div>
       </div>
 
+      {/* Summary Note if feedback is string */}
+      {typeof result.feedback === "string" && result.feedback && (
+        <div className="p-4 rounded-xl bg-[#0a0f1d] border border-cyan-500/30 text-xs text-cyan-300 font-mono">
+          <span className="font-bold uppercase text-[10px] text-cyan-400 block mb-1">EVALUATION NOTE:</span>
+          {result.feedback}
+        </div>
+      )}
+
       {/* Question Feedback List */}
-      <div className="space-y-4">
-        <h2 className="text-base font-semibold text-white">Question Review & Technical Rationales</h2>
+      {feedbackList.length > 0 && (
+        <div className="space-y-4">
+          <h2 className="text-base font-semibold text-white">Question Review & Technical Rationales</h2>
 
-        {result.feedback && result.feedback.map((item, idx) => (
-          <div
-            key={item.question_id || idx}
-            className={`p-6 rounded-2xl bg-[#0f172a] border transition-colors ${
-              item.is_correct ? "border-emerald-950/60" : "border-rose-950/60"
-            }`}
-          >
-            <div className="flex items-center justify-between gap-4 mb-3 border-b border-[#1e293b] pb-3">
-              <div className="flex items-center gap-2 font-mono text-xs">
-                <span className="text-slate-400 font-bold">QUESTION {idx + 1}</span>
-                {item.is_correct ? (
-                  <span className="text-emerald-400 flex items-center gap-1 text-[11px]">
-                    <CheckCircle2 className="w-3.5 h-3.5" /> Correct (+{item.points_earned} pts)
-                  </span>
-                ) : (
-                  <span className="text-rose-400 flex items-center gap-1 text-[11px]">
-                    <XCircle className="w-3.5 h-3.5" /> Incorrect (0 pts)
-                  </span>
-                )}
+          {feedbackList.map((item, idx) => (
+            <div
+              key={item.question_id || idx}
+              className={`p-6 rounded-2xl bg-[#0f172a] border transition-colors ${
+                item.is_correct ? "border-emerald-950/60" : "border-rose-950/60"
+              }`}
+            >
+              <div className="flex items-center justify-between gap-4 mb-3 border-b border-[#1e293b] pb-3">
+                <div className="flex items-center gap-2 font-mono text-xs">
+                  <span className="text-slate-400 font-bold">QUESTION {idx + 1}</span>
+                  {item.is_correct ? (
+                    <span className="text-emerald-400 flex items-center gap-1 text-[11px]">
+                      <CheckCircle2 className="w-3.5 h-3.5" /> Correct (+{item.points_earned ?? 10} pts)
+                    </span>
+                  ) : (
+                    <span className="text-rose-400 flex items-center gap-1 text-[11px]">
+                      <XCircle className="w-3.5 h-3.5" /> Incorrect (0 pts)
+                    </span>
+                  )}
+                </div>
+
+                <div className="text-xs font-mono text-slate-500">
+                  Your: {item.user_answer ? String(item.user_answer).toUpperCase() : "None"} | Correct:{" "}
+                  <span className="text-emerald-400 font-bold">{String(item.correct_answer || "").toUpperCase()}</span>
+                </div>
               </div>
 
-              <div className="text-xs font-mono text-slate-500">
-                Your: {item.user_answer ? item.user_answer.toUpperCase() : "None"} | Correct:{" "}
-                <span className="text-emerald-400 font-bold">{item.correct_answer?.toUpperCase()}</span>
-              </div>
+              <p className="text-xs sm:text-sm font-semibold text-white leading-relaxed mb-3">
+                {item.text}
+              </p>
+
+              {item.explanation && (
+                <div className="p-3.5 rounded-xl bg-[#0a0f1d] border border-[#1e293b] text-xs text-slate-300 space-y-1">
+                  <span className="text-[10px] uppercase font-mono font-bold text-cyan-400 block">
+                    TECHNICAL EXPLANATION:
+                  </span>
+                  <p className="leading-relaxed">{item.explanation}</p>
+                </div>
+              )}
             </div>
-
-            <p className="text-xs sm:text-sm font-semibold text-white leading-relaxed mb-3">
-              {item.text}
-            </p>
-
-            {item.explanation && (
-              <div className="p-3.5 rounded-xl bg-[#0a0f1d] border border-[#1e293b] text-xs text-slate-300 space-y-1">
-                <span className="text-[10px] uppercase font-mono font-bold text-cyan-400 block">
-                  TECHNICAL EXPLANATION:
-                </span>
-                <p className="leading-relaxed">{item.explanation}</p>
-              </div>
-            )}
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
 
-export default function AssessmentResultsPage({ params }) {
+export default function AssessmentResultsPage() {
   return (
     <Suspense fallback={<div className="p-8 text-xs font-mono text-cyan-400 animate-pulse">Calculating Graded Results...</div>}>
-      <ResultsContent params={params} />
+      <ResultsContent />
     </Suspense>
   );
 }

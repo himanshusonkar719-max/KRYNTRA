@@ -45,7 +45,35 @@ export default function AssessmentsCatalogPage() {
   };
 
   useEffect(() => {
-    fetchData();
+    let active = true;
+
+    const load = async () => {
+      if (!active) return;
+      setLoading(true);
+      try {
+        const [assessList, histList] = await Promise.allSettled([
+          assessmentsApi.list(),
+          assessmentsApi.getHistory()
+        ]);
+
+        if (!active) return;
+        if (assessList.status === "fulfilled" && Array.isArray(assessList.value)) {
+          setAssessments(assessList.value);
+        }
+        if (histList.status === "fulfilled" && Array.isArray(histList.value)) {
+          setHistory(histList.value);
+        }
+      } catch (err) {
+        console.error(err);
+      } finally {
+        if (active) setLoading(false);
+      }
+    };
+
+    void load();
+    return () => {
+      active = false;
+    };
   }, []);
 
   const domains = [
@@ -58,8 +86,11 @@ export default function AssessmentsCatalogPage() {
   ];
 
   const filtered = assessments.filter((a) => {
+    if (!a) return false;
     if (selectedDomain === "all") return true;
-    return a.domain_slug === selectedDomain;
+    if (a.domain_slug === selectedDomain) return true;
+    if (a.domain && a.domain.toLowerCase().replace(/[^a-z0-9]/g, "-").includes(selectedDomain)) return true;
+    return false;
   });
 
   return (
@@ -99,65 +130,73 @@ export default function AssessmentsCatalogPage() {
       </div>
 
       {/* Assessment Cards Grid */}
-      <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {filtered.map((item) => (
-          <div
-            key={item.id}
-            className="p-6 rounded-2xl bg-[#0f172a] border border-[#1e293b] hover:border-cyan-500/50 transition-colors flex flex-col justify-between group"
-          >
-            <div>
-              <div className="flex items-center justify-between gap-2 mb-3">
-                <span className="text-[10px] uppercase font-mono px-2 py-0.5 rounded bg-cyan-950/60 border border-cyan-800/40 text-cyan-400">
-                  {item.domain}
-                </span>
-                <span
-                  className={`text-[10px] uppercase font-mono px-2 py-0.5 rounded font-bold ${
-                    item.difficulty === "beginner"
-                      ? "bg-emerald-950/60 text-emerald-400 border border-emerald-800/40"
-                      : item.difficulty === "intermediate"
-                      ? "bg-amber-950/60 text-amber-400 border border-amber-800/40"
-                      : "bg-rose-950/60 text-rose-400 border border-rose-800/40"
-                  }`}
+      {filtered.length === 0 ? (
+        <div className="p-12 text-center rounded-2xl bg-[#0f172a] border border-[#1e293b] text-slate-400">
+          <Layers className="w-8 h-8 text-cyan-400 mx-auto mb-2 opacity-60" />
+          <h3 className="text-sm font-bold text-white">No assessments found for this domain</h3>
+          <p className="text-xs mt-1">Select "All Domains" to explore all cybersecurity scenarios.</p>
+        </div>
+      ) : (
+        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {filtered.map((item) => (
+            <div
+              key={item.id}
+              className="p-6 rounded-2xl bg-[#0f172a] border border-[#1e293b] hover:border-cyan-500/50 transition-colors flex flex-col justify-between group"
+            >
+              <div>
+                <div className="flex items-center justify-between gap-2 mb-3">
+                  <span className="text-[10px] uppercase font-mono px-2 py-0.5 rounded bg-cyan-950/60 border border-cyan-800/40 text-cyan-400">
+                    {item.domain || "Cybersecurity"}
+                  </span>
+                  <span
+                    className={`text-[10px] uppercase font-mono px-2 py-0.5 rounded font-bold ${
+                      item.difficulty === "beginner"
+                        ? "bg-emerald-950/60 text-emerald-400 border border-emerald-800/40"
+                        : item.difficulty === "intermediate"
+                        ? "bg-amber-950/60 text-amber-400 border border-amber-800/40"
+                        : "bg-rose-950/60 text-rose-400 border border-rose-800/40"
+                    }`}
+                  >
+                    {item.difficulty || "standard"}
+                  </span>
+                </div>
+
+                <h3 className="text-base font-bold text-white group-hover:text-cyan-400 transition-colors">
+                  {item.title}
+                </h3>
+                <p className="text-xs text-slate-400 mt-2 leading-relaxed line-clamp-3">
+                  {item.description}
+                </p>
+              </div>
+
+              <div className="pt-5 border-t border-[#1e293b] mt-5">
+                <div className="flex items-center justify-between text-xs text-slate-400 font-mono mb-4">
+                  <div className="flex items-center gap-1.5">
+                    <Clock className="w-3.5 h-3.5 text-cyan-400" />
+                    <span>{item.duration_mins ?? item.estimated_mins ?? 30} mins</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <FileText className="w-3.5 h-3.5 text-cyan-400" />
+                    <span>{item.question_count ?? item.questions_count ?? 3} Questions</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <Award className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>{item.total_points ?? 30} Pts</span>
+                  </div>
+                </div>
+
+                <Link
+                  href={`/dashboard/assessments/${item.id}`}
+                  className="w-full py-2.5 px-4 bg-cyan-500 hover:bg-cyan-400 text-slate-950 text-xs font-bold rounded-lg transition-colors flex items-center justify-center gap-2 shadow-md shadow-cyan-500/20"
                 >
-                  {item.difficulty}
-                </span>
+                  <Play className="w-3.5 h-3.5 fill-current" />
+                  <span>Begin Assessment</span>
+                </Link>
               </div>
-
-              <h3 className="text-base font-bold text-white group-hover:text-cyan-400 transition-colors">
-                {item.title}
-              </h3>
-              <p className="text-xs text-slate-400 mt-2 leading-relaxed line-clamp-3">
-                {item.description}
-              </p>
             </div>
-
-            <div className="pt-5 border-t border-[#1e293b] mt-5">
-              <div className="flex items-center justify-between text-xs text-slate-400 font-mono mb-4">
-                <div className="flex items-center gap-1.5">
-                  <Clock className="w-3.5 h-3.5 text-cyan-400" />
-                  <span>{item.duration_mins} mins</span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <FileText className="w-3.5 h-3.5 text-cyan-400" />
-                  <span>{item.question_count} Questions</span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <Award className="w-3.5 h-3.5 text-emerald-400" />
-                  <span>{item.total_points} Pts</span>
-                </div>
-              </div>
-
-              <Link
-                href={`/dashboard/assessments/${item.id}`}
-                className="w-full py-2.5 px-4 bg-cyan-500 hover:bg-cyan-400 text-slate-950 text-xs font-bold rounded-lg transition-colors flex items-center justify-center gap-2 shadow-md shadow-cyan-500/20"
-              >
-                <Play className="w-3.5 h-3.5 fill-current" />
-                <span>Begin Assessment</span>
-              </Link>
-            </div>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      )}
 
       {/* User Attempt History Table */}
       {history.length > 0 && (

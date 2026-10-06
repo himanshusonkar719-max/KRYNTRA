@@ -31,10 +31,11 @@ function ScannerContent() {
   const [scanType, setScanType] = useState("network");
   const [scanners, setScanners] = useState(["nmap", "zap", "trivy"]);
   const [activeScan, setActiveScan] = useState(null);
-  const [isScanning, setIsScanning] = useState(false);
+  const [scanRequested, setScanRequested] = useState(false);
   const [error, setError] = useState("");
   const [expandedVuln, setExpandedVuln] = useState(null);
   const [logs, setLogs] = useState([]);
+  const isScanning = scanRequested || (activeScan ? activeScan.status !== "completed" && activeScan.status !== "failed" : false);
 
   // Toggle engine checkboxes
   const toggleScanner = (name) => {
@@ -47,21 +48,21 @@ function ScannerContent() {
     }
   };
 
+  const activeScanId = activeScan?.id;
+  const activeScanStatus = activeScan?.status;
+
   // Poll active scan until completed
   useEffect(() => {
-    if (!activeScan || activeScan.status === "completed" || activeScan.status === "failed") {
-      setIsScanning(false);
+    if (!activeScanId || activeScanStatus === "completed" || activeScanStatus === "failed") {
       return;
     }
 
-    setIsScanning(true);
     const interval = setInterval(async () => {
       try {
-        const updated = await scansApi.getScan(activeScan.id);
+        const updated = await scansApi.getScan(activeScanId);
         if (updated) {
           setActiveScan(updated);
 
-          // Append simulated log messages based on progress
           const prog = updated.progress || 100;
           if (prog >= 25 && prog < 60) {
             setLogs((prev) => [
@@ -91,7 +92,7 @@ function ScannerContent() {
           }
 
           if (updated.status === "completed" || updated.status === "failed") {
-            setIsScanning(false);
+            setScanRequested(false);
             clearInterval(interval);
           }
         }
@@ -101,7 +102,7 @@ function ScannerContent() {
     }, 1500);
 
     return () => clearInterval(interval);
-  }, [activeScan?.id, activeScan?.status, target]);
+  }, [activeScanId, activeScanStatus, target]);
 
   // Load initial scan if query param present
   useEffect(() => {
@@ -120,7 +121,7 @@ function ScannerContent() {
     if (!target.trim()) return;
 
     setError("");
-    setIsScanning(true);
+    setScanRequested(true);
     setLogs([
       `[Orchestrator] Initializing multi-engine scan for target: ${target.trim()}`,
       `[Orchestrator] Enabled scanning modules: ${scanners.join(", ")}`,
@@ -130,9 +131,8 @@ function ScannerContent() {
     try {
       const res = await scansApi.createScan(target.trim(), scanType, scanners);
       setActiveScan(res);
-      // Auto populate genuine live logs based on actual scan result
       if (res && res.status === "completed") {
-        setIsScanning(false);
+        setScanRequested(false);
         const vulnCount = res.vulnerabilities?.length || 0;
         setLogs((prev) => [
           ...prev,
@@ -143,7 +143,7 @@ function ScannerContent() {
       }
     } catch (err) {
       setError(err.message || "Failed to initiate scan.");
-      setIsScanning(false);
+      setScanRequested(false);
     }
   };
 
@@ -448,6 +448,93 @@ function ScannerContent() {
                               <p className="leading-relaxed">{vuln.remediation}</p>
                             </div>
                           )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+          {/* Auto-Generated Remediation Patches (AWIS Phase 3) */}
+          {activeScan.remediations && activeScan.remediations.length > 0 && (
+            <div className="pt-4 border-t border-[#1e293b]">
+              <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+                <h3 className="text-sm font-semibold text-white flex items-center gap-2">
+                  <Shield className="w-4 h-4 text-emerald-400" />
+                  Auto-Generated Remediation Patches ({activeScan.remediations.length})
+                </h3>
+                <span className="text-[10px] font-mono text-emerald-400 bg-emerald-950/40 border border-emerald-800/40 px-2 py-0.5 rounded">
+                  AWIS PHASE 3 — AGENTIC FIXER
+                </span>
+              </div>
+
+              <div className="space-y-3">
+                {activeScan.remediations.map((rem, rIdx) => {
+                  const remId = rem.id || `rem-${rIdx}`;
+                  const isExpanded = expandedVuln === `rem-${remId}`;
+
+                  return (
+                    <div
+                      key={remId}
+                      className="p-4 rounded-xl bg-[#0a0f1d] border border-emerald-900/30 hover:border-emerald-800/50 transition-colors"
+                    >
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                        <div className="flex items-start gap-3">
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-mono uppercase font-bold shrink-0 mt-0.5 ${
+                            rem.fix_type === "header_patch"
+                              ? "bg-blue-950/60 text-blue-400 border border-blue-800/50"
+                              : rem.fix_type === "firewall_rule"
+                              ? "bg-rose-950/60 text-rose-400 border border-rose-800/50"
+                              : rem.fix_type === "dns_fix"
+                              ? "bg-purple-950/60 text-purple-400 border border-purple-800/50"
+                              : "bg-amber-950/60 text-amber-400 border border-amber-800/50"
+                          }`}>
+                            {rem.fix_type?.replace(/_/g, " ") || "patch"}
+                          </span>
+                          <div>
+                            <h4 className="text-xs font-semibold text-white">
+                              {rem.target_file || "Configuration Patch"}
+                            </h4>
+                            <div className="flex items-center gap-3 text-[11px] font-mono text-slate-400 mt-1">
+                              <span className={`${
+                                rem.status === "proposed" ? "text-amber-400" :
+                                rem.status === "applied" ? "text-emerald-400" :
+                                rem.status === "verified" ? "text-cyan-400" :
+                                "text-slate-400"
+                              }`}>
+                                ● {rem.status || "proposed"}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2 self-end sm:self-center">
+                          <button
+                            onClick={() => {
+                              if (rem.patch_content) {
+                                navigator.clipboard.writeText(rem.patch_content);
+                              }
+                            }}
+                            className="px-2 py-1 text-[10px] font-mono text-slate-300 bg-[#070b14] border border-[#1e293b] rounded hover:border-cyan-500/50 hover:text-cyan-300 transition-colors cursor-pointer"
+                          >
+                            Copy Patch
+                          </button>
+                          <button
+                            onClick={() => setExpandedVuln(isExpanded ? null : `rem-${remId}`)}
+                            className="text-xs text-slate-400 hover:text-white flex items-center gap-1 font-mono cursor-pointer"
+                          >
+                            <span>{isExpanded ? "Hide" : "View"}</span>
+                            {isExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                          </button>
+                        </div>
+                      </div>
+
+                      {isExpanded && rem.patch_content && (
+                        <div className="mt-3 pt-3 border-t border-[#1e293b]">
+                          <pre className="p-3 rounded-lg bg-[#070b14] border border-[#1e293b] text-xs font-mono text-emerald-300 overflow-x-auto whitespace-pre-wrap leading-relaxed">
+                            {rem.patch_content}
+                          </pre>
                         </div>
                       )}
                     </div>

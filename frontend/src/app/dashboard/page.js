@@ -46,15 +46,43 @@ export default function DashboardOverviewPage() {
   };
 
   useEffect(() => {
-    fetchData();
+    let active = true;
+
+    const load = async () => {
+      if (!active) return;
+      setLoading(true);
+      try {
+        const [scansData, queueData] = await Promise.allSettled([
+          scansApi.listScans(),
+          triageApi.getQueue()
+        ]);
+
+        if (!active) return;
+        if (scansData.status === "fulfilled" && Array.isArray(scansData.value)) {
+          setScans(scansData.value);
+        }
+        if (queueData.status === "fulfilled" && Array.isArray(queueData.value)) {
+          setVulns(queueData.value);
+        }
+      } catch {
+        // Keep defaults
+      } finally {
+        if (active) setLoading(false);
+      }
+    };
+
+    void load();
+    return () => {
+      active = false;
+    };
   }, []);
 
   // Compute metrics
   const totalScans = scans.length;
-  const criticalCount = vulns.filter((v) => v.severity === "critical" && !v.is_false_positive).length;
-  const highCount = vulns.filter((v) => v.severity === "high" && !v.is_false_positive).length;
-  const mediumCount = vulns.filter((v) => v.severity === "medium" && !v.is_false_positive).length;
-  const lowCount = vulns.filter((v) => v.severity === "low" && !v.is_false_positive).length;
+  const criticalCount = vulns.filter((v) => v && String(v.severity || "").toLowerCase() === "critical" && !v.is_false_positive).length;
+  const highCount = vulns.filter((v) => v && String(v.severity || "").toLowerCase() === "high" && !v.is_false_positive).length;
+  const mediumCount = vulns.filter((v) => v && String(v.severity || "").toLowerCase() === "medium" && !v.is_false_positive).length;
+  const lowCount = vulns.filter((v) => v && String(v.severity || "").toLowerCase() === "low" && !v.is_false_positive).length;
 
   const latestScan = scans.length > 0 ? scans[0] : null;
   const postureScore = latestScan?.score ? Math.round(latestScan.score) : 82;

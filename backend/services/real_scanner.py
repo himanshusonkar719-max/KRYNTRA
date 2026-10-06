@@ -577,6 +577,18 @@ async def run_real_scan(scan_id: str):
         scan.completed_at = datetime.now(timezone.utc)
 
         db.commit()
+
+        # ── AWIS Phase 3: Auto-generate remediation patches ──
+        try:
+            from services.remediation_engine import generate_remediations_for_scan
+            fix_count = generate_remediations_for_scan(scan.id)
+            if fix_count > 0:
+                scan.summary += f" Auto-generated {fix_count} remediation patches."
+                db.commit()
+        except Exception as rem_err:
+            # Remediation generation is non-critical — don't fail the scan
+            pass
+
     except Exception as e:
         db.rollback()
         scan.status = "failed"
@@ -584,3 +596,4 @@ async def run_real_scan(scan_id: str):
         db.commit()
     finally:
         db.close()
+

@@ -6,22 +6,40 @@ from config import CORS_ORIGINS
 from db.database import engine, Base, SessionLocal
 from db.models import Scan
 from routers import auth, scans, triage, reports, assessments, analytics, terminal
+from routers import scheduler as scheduler_router
+from routers import remediations as remediations_router
+from services.scheduler import start_scheduler, stop_scheduler
 
-# Create all database tables on startup
+# Create all database tables on startup (including new AWIS tables)
 Base.metadata.create_all(bind=engine)
+try:
+    from db.seed_assessments import seed_assessments
+    seed_assessments()
+except Exception as e:
+    pass
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup actions
+    # Auto-seed cybersecurity assessment catalogue if database is fresh
+    try:
+        from db.seed_assessments import seed_assessments
+        seed_assessments()
+    except Exception as e:
+        print(f"[Startup Warning] Assessment catalog auto-seed: {e}")
+
+    # Startup: launch the AWIS autonomous scheduler background loop
+    scheduler_task = asyncio.create_task(start_scheduler())
     yield
-    # Shutdown actions
+    # Shutdown: stop the scheduler
+    stop_scheduler()
+    scheduler_task.cancel()
 
 
 app = FastAPI(
     title="KRYNTRA Cybersecurity Assessment Engine API",
-    version="1.0.0",
-    description="Autonomous Agentic Security Assessment, AI Triage, and Continuous Compliance API",
+    version="2.0.0",
+    description="Autonomous Agentic Security Assessment, AI Triage, Remediation Pipeline, and Continuous Compliance API",
     lifespan=lifespan
 )
 
@@ -34,7 +52,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Include API Routers
+# Include API Routers — Phase 1 (original)
 app.include_router(auth.router)
 app.include_router(scans.router)
 app.include_router(triage.router)
@@ -43,6 +61,10 @@ app.include_router(assessments.router)
 app.include_router(analytics.router)
 app.include_router(terminal.router)
 
+# Phase 2 & 3 — AWIS Autonomous Loop
+app.include_router(scheduler_router.router)
+app.include_router(remediations_router.router)
+
 
 
 @app.get("/")
@@ -50,14 +72,15 @@ def root():
     return {
         "platform": "KRYNTRA Autonomous Cyber Defense API",
         "status": "operational",
-        "version": "1.0.0",
+        "version": "2.0.0",
+        "awis": "Autonomous scanning, triage, and remediation active",
         "docs": "/docs"
     }
 
 
 @app.get("/api/health")
 def health_check():
-    return {"status": "healthy", "service": "kryntra-backend"}
+    return {"status": "healthy", "service": "kryntra-backend", "awis": "active"}
 
 
 # Real-time WebSocket endpoint for scan monitoring
@@ -96,3 +119,4 @@ async def websocket_scan_progress(websocket: WebSocket, scan_id: str):
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+

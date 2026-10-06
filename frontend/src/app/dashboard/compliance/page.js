@@ -44,7 +44,35 @@ export default function CompliancePage() {
   };
 
   useEffect(() => {
-    fetchData(framework);
+    let active = true;
+
+    const load = async () => {
+      if (!active) return;
+      setLoading(true);
+      try {
+        const [compRes, repRes] = await Promise.allSettled([
+          reportsApi.getCompliance(framework),
+          reportsApi.listReports(),
+        ]);
+
+        if (!active) return;
+        if (compRes.status === "fulfilled") {
+          setComplianceData(compRes.value);
+        }
+        if (repRes.status === "fulfilled" && Array.isArray(repRes.value)) {
+          setReports(repRes.value);
+        }
+      } catch (err) {
+        console.error(err);
+      } finally {
+        if (active) setLoading(false);
+      }
+    };
+
+    void load();
+    return () => {
+      active = false;
+    };
   }, [framework]);
 
   const handleGenerateReport = async () => {
